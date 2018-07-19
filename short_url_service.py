@@ -5,7 +5,7 @@ app = Flask(__name__)
 host_name = 'localhost'
 port = 1234
 url_manager = ShortUrlManager(host_name, port)
-valid_host = {"127.0.0.1"}
+valid_host = {"127.0.0.1", "localhost"}
 
 
 @app.route('/')
