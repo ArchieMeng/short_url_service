@@ -11,5 +11,6 @@ if __name__ == "__main__":
     # )
 
     # gevent method
-    http_server = WSGIServer(('localhost', 1234), short_url_service.app)
+    short_url_service.port = 8080
+    http_server = WSGIServer(('localhost', 8080), short_url_service.app)
     http_server.serve_forever()
