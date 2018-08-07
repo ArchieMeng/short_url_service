@@ -1,34 +1,18 @@
 import random
 import os
-import multiprocessing
-
+import redis
 
 class ShortUrlManager:
-    RECORD_NAME = os.path.join(os.path.dirname(__file__), 'records.csv')
-    record_lock = multiprocessing.Lock()
-    
+
     def __init__(self, host_name, port=80, url_len=6, rand_num_generator=lambda: os.urandom(16)):
+        self.conn = redis.Redis(host="localhost", port=16650)
         self.host_name, self.port = host_name, port
-        self.len = url_len
-        self.url2key, self.key2url = dict(), dict()
-        self.load_map()
+        self.len = url_len # short key length
         self.generate_random_bytes = rand_num_generator
         self.char_list = [str(i) for i in range(10)] +\
                          [chr(i + ord('a')) for i in range(26)] +\
                          [chr(i + ord('A')) for i in range(26)]
-
-    def load_map(self):
-        try:
-            with open(ShortUrlManager.RECORD_NAME, 'r') as rf:
-                for line in rf:
-                    if line:
-                        line = line.replace('\n', '')
-                        key, url = tuple(line.split('\t'))
-                        self.key2url[key] = url
-                        self.url2key[url] = key
-
-        except FileNotFoundError:
-            pass
+        
 
     def __generate_short_key(self, url: str):
         while True:
@@ -37,7 +21,7 @@ class ShortUrlManager:
             for i in range(self.len):
                 short_key += random.choice(self.char_list)
                 
-            if short_key not in self.key2url:
+            if not self.conn.get("key2url[{}]".format(short_key)):
                 return short_key
             
     def __key_to_url(self, key):
@@ -58,16 +42,15 @@ class ShortUrlManager:
         return url.split('/')[-1]
         
     def get_short_url(self, url):
-        if url in self.url2key:
-            return self.__key_to_url(self.url2key[url])
+        key = self.conn.get("url2key[{}]".format(url))
+        if key:
+            key = key.decode()
+            return self.__key_to_url(key)
         else:
-            with ShortUrlManager.record_lock:
-                short_key = self.__generate_short_key(url)
-                self.url2key[url] = short_key
-                self.key2url[short_key] = url
-
-            with open(ShortUrlManager.RECORD_NAME, 'a') as wf:
-                wf.write('\t'.join([short_key, url]) + '\n')
+            short_key = self.__generate_short_key(url)
+            self.conn.set("url2key[{}]".format(url), short_key)
+            self.conn.set("key2url[{}]".format(short_key), url)
+            
             return self.__key_to_url(short_key)
     
     def get_url(self, key):
@@ -78,8 +61,8 @@ class ShortUrlManager:
 
         :return: if key is valid, return url, else return None
         """
-        if len(key) == self.len and key in self.key2url:
-            return self.key2url[key]
+        if len(key) == self.len:
+            return self.conn.get("key2url[{}]".format(key))
         else:
             return None
 
@@ -108,5 +91,4 @@ if __name__ == '__main__':
     print(manager.get_url('fucka'))
     print('It should print None if it is not in manager')
     print(manager.get_url('fucka2'))
-
-    print(manager.key2url)
+    
